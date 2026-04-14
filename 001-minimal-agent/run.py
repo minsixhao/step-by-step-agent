@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Python Code Agent 交互式运行脚本
+Python Agent 交互式运行脚本
 
 使用方法：
 1. 设置环境变量或配置 .env 文件
@@ -44,7 +44,7 @@ def simple_display(event: AgentEvent):
 
 def main():
     print("=" * 50)
-    print("Python Code Agent")
+    print("Python Agent")
     print("=" * 50)
     print(f"工作目录: {WORKSPACE_DIR}")
     print()

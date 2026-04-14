@@ -1,6 +1,6 @@
 # v001: Minimal Agent (最简 Agent)
 
-这是 Python Code Agent 学习项目的第一个版本。
+这是 Python Agent 学习项目的第一个版本。
 
 ## 本版本学习内容
 

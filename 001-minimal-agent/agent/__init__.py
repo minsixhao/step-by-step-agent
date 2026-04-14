@@ -1,5 +1,5 @@
 """
-Python Code Agent 主模块
+Python Agent 主模块
 
 导出主要的类和类型供外部使用。
 """
