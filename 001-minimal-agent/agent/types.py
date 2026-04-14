@@ -1,0 +1,212 @@
+"""
+数据类型定义
+
+定义 Agent 所需的核心数据类型。
+"""
+
+from dataclasses import dataclass, field
+from typing import Any, Callable, Dict, List, Optional, Union
+from enum import Enum
+
+
+class MessageRole(Enum):
+    """消息角色枚举"""
+    USER = "user"
+    ASSISTANT = "assistant"
+    TOOL_RESULT = "toolResult"
+
+
+@dataclass
+class TextContent:
+    """文本内容块"""
+    type: str = "text"
+    text: str = ""
+
+
+@dataclass
+class ToolCall:
+    """工具调用"""
+    id: str
+    name: str
+    arguments: Dict[str, Any]
+
+
+@dataclass
+class ToolResult:
+    """工具执行结果"""
+    tool_call_id: str
+    tool_name: str
+    content: List[TextContent]
+    is_error: bool = False
+    details: Any = None
+
+
+MessageContent = Union[TextContent, ToolCall, ToolResult]
+
+
+@dataclass
+class Message:
+    """消息"""
+    role: MessageRole
+    content: List[MessageContent]
+    timestamp: int = field(default_factory=lambda: __import__("time").time_ns() // 1_000_000)
+
+
+@dataclass
+class ToolParameters:
+    """工具参数定义"""
+    type: str = "object"
+    properties: Dict[str, Any] = field(default_factory=dict)
+    required: List[str] = field(default_factory=list)
+
+
+@dataclass
+class Tool:
+    """工具定义"""
+    name: str
+    description: str
+    parameters: ToolParameters
+    execute: Callable[[str, Dict[str, Any], Optional[Callable[[Any], None]]], ToolResult]
+
+
+@dataclass
+class AgentState:
+    """Agent 状态"""
+    system_prompt: str = ""
+    messages: List[Message] = field(default_factory=list)
+    tools: List[Tool] = field(default_factory=list)
+    model: str = "ark-code-latest"
+    is_streaming: bool = False
+    streaming_message: Optional[Message] = None
+    pending_tool_calls: List[str] = field(default_factory=list)
+    error_message: Optional[str] = None
+
+
+@dataclass
+class AgentConfig:
+    """Agent 配置"""
+    api_key: Optional[str] = None
+    base_url: Optional[str] = None
+    timeout: Optional[float] = None
+    max_iterations: int = 20
+    tool_execution_mode: str = "parallel"  # "parallel" 或 "sequential"
+
+
+# =============================================================================
+# Agent 事件类型定义
+# =============================================================================
+
+class AgentEventType(Enum):
+    """Agent 事件类型"""
+    AGENT_START = "agent_start"
+    AGENT_END = "agent_end"
+    TURN_START = "turn_start"
+    TURN_END = "turn_end"
+    MESSAGE_START = "message_start"
+    MESSAGE_UPDATE = "message_update"
+    MESSAGE_END = "message_end"
+    TOOL_EXECUTION_START = "tool_execution_start"
+    TOOL_EXECUTION_UPDATE = "tool_execution_update"
+    TOOL_EXECUTION_END = "tool_execution_end"
+
+
+@dataclass
+class AgentEvent:
+    """Agent 事件"""
+    type: AgentEventType
+    messages: Optional[List[Message]] = None
+    message: Optional[Message] = None
+    tool_results: Optional[List[Message]] = None
+    delta: Optional[str] = None
+    delta_tool_call: Optional[ToolCall] = None
+    tool_call_id: Optional[str] = None
+    tool_name: Optional[str] = None
+    args: Optional[Dict[str, Any]] = None
+    partial_result: Optional[Any] = None
+    result: Optional[ToolResult] = None
+    is_error: Optional[bool] = None
+
+
+# 事件回调类型
+AgentEventHandler = Callable[[AgentEvent], Union[None, Any]]
+
+
+# 便捷函数创建各种事件
+def create_agent_start_event() -> AgentEvent:
+    return AgentEvent(type=AgentEventType.AGENT_START)
+
+
+def create_agent_end_event(messages: List[Message]) -> AgentEvent:
+    return AgentEvent(type=AgentEventType.AGENT_END, messages=messages)
+
+
+def create_turn_start_event() -> AgentEvent:
+    return AgentEvent(type=AgentEventType.TURN_START)
+
+
+def create_turn_end_event(message: Message, tool_results: List[Message]) -> AgentEvent:
+    return AgentEvent(type=AgentEventType.TURN_END, message=message, tool_results=tool_results)
+
+
+def create_message_start_event(message: Message) -> AgentEvent:
+    return AgentEvent(type=AgentEventType.MESSAGE_START, message=message)
+
+
+def create_message_update_event(
+    message: Message,
+    delta: Optional[str] = None,
+    delta_tool_call: Optional[ToolCall] = None,
+) -> AgentEvent:
+    return AgentEvent(
+        type=AgentEventType.MESSAGE_UPDATE,
+        message=message,
+        delta=delta,
+        delta_tool_call=delta_tool_call,
+    )
+
+
+def create_message_end_event(message: Message) -> AgentEvent:
+    return AgentEvent(type=AgentEventType.MESSAGE_END, message=message)
+
+
+def create_tool_execution_start_event(
+    tool_call_id: str,
+    tool_name: str,
+    args: Dict[str, Any],
+) -> AgentEvent:
+    return AgentEvent(
+        type=AgentEventType.TOOL_EXECUTION_START,
+        tool_call_id=tool_call_id,
+        tool_name=tool_name,
+        args=args,
+    )
+
+
+def create_tool_execution_update_event(
+    tool_call_id: str,
+    tool_name: str,
+    args: Dict[str, Any],
+    partial_result: Any,
+) -> AgentEvent:
+    return AgentEvent(
+        type=AgentEventType.TOOL_EXECUTION_UPDATE,
+        tool_call_id=tool_call_id,
+        tool_name=tool_name,
+        args=args,
+        partial_result=partial_result,
+    )
+
+
+def create_tool_execution_end_event(
+    tool_call_id: str,
+    tool_name: str,
+    result: ToolResult,
+    is_error: bool,
+) -> AgentEvent:
+    return AgentEvent(
+        type=AgentEventType.TOOL_EXECUTION_END,
+        tool_call_id=tool_call_id,
+        tool_name=tool_name,
+        result=result,
+        is_error=is_error,
+    )
