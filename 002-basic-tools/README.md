@@ -1,18 +1,11 @@
-# v001: Minimal Agent (最简 Agent)
+# v002: Basic Tools (基础工具增强版)
 
-这是 Python Agent 学习项目的第一个版本。
+这是 Python Agent 学习项目的第二个版本，在 v001 基础上完善了工具集和错误处理。
 
 ## 本版本学习内容
 
-- Agent 基础架构设计
-- LLM API 调用封装
-- 工具调用机制
-- 4个基础工具:
-  - `read` - 读取文件
-  - `write` - 写入文件
-  - `edit` - 编辑文件（字符串替换）
-  - `bash` - 执行 bash 命令
-- 工作区（workspace）安全限制
+- 完善工具集和错误处理
+- 更好的用户体验
 
 ## 核心概念
 
