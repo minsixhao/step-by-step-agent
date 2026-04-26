@@ -1,7 +1,7 @@
 """
 工具模块
 
-包含四个核心工具：read, write, edit, bash
+包含七个核心工具：read, write, edit, bash, grep, find, ls
 所有文件操作都限制在 workspace 目录下
 """
 
@@ -48,5 +48,18 @@ from .read import read_tool
 from .write import write_tool
 from .edit import edit_tool
 from .bash import bash_tool
+from .grep import grep_tool
+from .find import find_tool
+from .ls import ls_tool
 
-__all__ = ["read_tool", "write_tool", "edit_tool", "bash_tool", "WORKSPACE_DIR", "get_safe_path"]
+__all__ = [
+    "read_tool",
+    "write_tool",
+    "edit_tool",
+    "bash_tool",
+    "grep_tool",
+    "find_tool",
+    "ls_tool",
+    "WORKSPACE_DIR",
+    "get_safe_path",
+]

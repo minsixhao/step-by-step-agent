@@ -10,40 +10,40 @@ def execute_edit(
     on_update: Optional[Callable[[Any], None]] = None,
 ) -> ToolResult:
     """执行编辑文件操作（限制在 workspace 目录下）"""
-    file_path = args.get("file_path")
-    old_string = args.get("old_string")
-    new_string = args.get("new_string")
+    path = args.get("path")
+    old_string = args.get("oldString")
+    new_string = args.get("newString")
 
-    if not file_path:
+    if not path:
         return ToolResult(
             tool_call_id=tool_call_id,
             tool_name="edit",
-            content=[TextContent(text="错误: file_path 是必填参数")],
+            content=[TextContent(text="错误: path 是必填参数")],
             is_error=True,
         )
     if old_string is None:
         return ToolResult(
             tool_call_id=tool_call_id,
             tool_name="edit",
-            content=[TextContent(text="错误: old_string 是必填参数")],
+            content=[TextContent(text="错误: oldString 是必填参数")],
             is_error=True,
         )
     if new_string is None:
         return ToolResult(
             tool_call_id=tool_call_id,
             tool_name="edit",
-            content=[TextContent(text="错误: new_string 是必填参数")],
+            content=[TextContent(text="错误: newString 是必填参数")],
             is_error=True,
         )
 
     try:
-        safe_path = get_safe_path(file_path)
+        safe_path = get_safe_path(path)
 
         if not os.path.exists(safe_path):
             return ToolResult(
                 tool_call_id=tool_call_id,
                 tool_name="edit",
-                content=[TextContent(text=f"错误: 文件不存在: {file_path} (工作目录: {WORKSPACE_DIR})")],
+                content=[TextContent(text=f"错误: 文件不存在: {path} (工作目录: {WORKSPACE_DIR})")],
                 is_error=True,
             )
 
@@ -54,7 +54,7 @@ def execute_edit(
             return ToolResult(
                 tool_call_id=tool_call_id,
                 tool_name="edit",
-                content=[TextContent(text="错误: 在文件中未找到 old_string")],
+                content=[TextContent(text="错误: 在文件中未找到 oldString")],
                 is_error=True,
             )
 
@@ -62,7 +62,7 @@ def execute_edit(
             return ToolResult(
                 tool_call_id=tool_call_id,
                 tool_name="edit",
-                content=[TextContent(text="错误: old_string 在文件中出现多次")],
+                content=[TextContent(text="错误: oldString 在文件中出现多次")],
                 is_error=True,
             )
 
@@ -74,8 +74,8 @@ def execute_edit(
         return ToolResult(
             tool_call_id=tool_call_id,
             tool_name="edit",
-            content=[TextContent(text=f"成功编辑文件: {file_path} (工作目录: {WORKSPACE_DIR})")],
-            details={"file_path": file_path, "safe_path": safe_path, "old_length": len(content), "new_length": len(new_content)},
+            content=[TextContent(text=f"成功编辑文件: {path} (工作目录: {WORKSPACE_DIR})")],
+            details={"path": path, "safe_path": safe_path, "old_length": len(content), "new_length": len(new_content)},
         )
     except ValueError as e:
         return ToolResult(
@@ -98,20 +98,20 @@ edit_tool = Tool(
     description=f"通过替换精确的字符串匹配来编辑文件（所有文件操作都在 {WORKSPACE_DIR} 目录下）",
     parameters=ToolParameters(
         properties={
-            "file_path": {
+            "path": {
                 "type": "string",
                 "description": "要编辑的文件路径（相对于 workspace 目录）",
             },
-            "old_string": {
+            "oldString": {
                 "type": "string",
                 "description": "要查找并替换的精确字符串",
             },
-            "new_string": {
+            "newString": {
                 "type": "string",
                 "description": "替换后的字符串",
             },
         },
-        required=["file_path", "old_string", "new_string"],
+        required=["path", "oldString", "newString"],
     ),
     execute=execute_edit,
 )

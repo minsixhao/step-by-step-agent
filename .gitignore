@@ -36,15 +36,10 @@ ENV/
 *.swo
 *~
 
-# Workspace (Agent working directory)
-workspace/*
-!workspace/.gitkeep
-
-# Sessions
-sessions/
-
 # macOS
 .DS_Store
 
 # Claude Code
 .claude/
+
+CLAUDE.md

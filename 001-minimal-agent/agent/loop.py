@@ -7,6 +7,7 @@ from agent.types import (
     Message,
     MessageRole,
     TextContent,
+    ThinkingContent,
     ToolCall,
     ToolResult,
     AgentState,
@@ -45,7 +46,9 @@ def _message_to_anthropic(message: Message) -> dict:
     """将消息转换为 Anthropic API 格式"""
     content = []
     for block in message.content:
-        if isinstance(block, TextContent):
+        if isinstance(block, ThinkingContent):
+            content.append({"type": "thinking", "thinking": block.thinking})
+        elif isinstance(block, TextContent):
             content.append({"type": "text", "text": block.text})
         elif isinstance(block, ToolCall):
             content.append({
@@ -73,7 +76,9 @@ def _parse_assistant_content(anthropic_message: Any) -> List[TextContent | ToolC
     """解析助手返回的内容"""
     content = []
     for block in anthropic_message.content:
-        if block.type == "text":
+        if block.type == "thinking":
+            content.append(ThinkingContent(thinking=block.thinking))
+        elif block.type == "text":
             content.append(TextContent(text=block.text))
         elif block.type == "tool_use":
             content.append(ToolCall(
@@ -222,8 +227,9 @@ def run_agent_loop(
         tools = [_tool_to_dict(t) for t in state.tools]
 
         # 使用流式 API 响应
-        assistant_content: List[TextContent | ToolCall] = []
+        assistant_content: List[TextContent | ThinkingContent | ToolCall] = []
         current_text = ""
+        current_thinking = ""
         current_tool_calls: List[ToolCall] = []
         tool_call_inputs: Dict[str, str] = {}  # 用于累积工具调用输入
 
@@ -250,7 +256,9 @@ def run_agent_loop(
                     pass
                 elif event.type == "content_block_start":
                     block = event.content_block
-                    if block.type == "text":
+                    if block.type == "thinking":
+                        current_thinking = block.thinking or ""
+                    elif block.type == "text":
                         current_text = block.text or ""
                     elif block.type == "tool_use":
                         # 初始化工具调用
@@ -263,10 +271,23 @@ def run_agent_loop(
                         tool_call_inputs[block.id] = ""
                 elif event.type == "content_block_delta":
                     delta = event.delta
-                    if delta.type == "text_delta":
+                    if delta.type == "thinking_delta":
+                        current_thinking += delta.thinking
+                        # 更新消息内容（不对外发射 UI 事件）
+                        assistant_content = []
+                        if current_thinking:
+                            assistant_content.append(ThinkingContent(thinking=current_thinking))
+                        if current_text:
+                            assistant_content.append(TextContent(text=current_text))
+                        assistant_content.extend(current_tool_calls)
+                        assistant_msg.content = assistant_content
+                        state.streaming_message = assistant_msg
+                    elif delta.type == "text_delta":
                         current_text += delta.text
                         # 更新 message 并发射 message_update 事件
                         assistant_content = []
+                        if current_thinking:
+                            assistant_content.append(ThinkingContent(thinking=current_thinking))
                         if current_text:
                             assistant_content.append(TextContent(text=current_text))
                         assistant_content.extend(current_tool_calls)
@@ -286,6 +307,8 @@ def run_agent_loop(
 
                         # 更新消息内容并发射事件
                         assistant_content = []
+                        if current_thinking:
+                            assistant_content.append(ThinkingContent(thinking=current_thinking))
                         if current_text:
                             assistant_content.append(TextContent(text=current_text))
                         assistant_content.extend(current_tool_calls)
@@ -304,6 +327,11 @@ def run_agent_loop(
 
         # 获取完整的响应
         response = stream.get_final_message()
+
+        # 累加 token 使用量
+        if hasattr(response, 'usage'):
+            state.usage.input_tokens += getattr(response.usage, 'input_tokens', 0)
+            state.usage.output_tokens += getattr(response.usage, 'output_tokens', 0)
 
         # 解析完整的响应
         assistant_content = _parse_assistant_content(response)

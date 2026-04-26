@@ -24,6 +24,13 @@ class TextContent:
 
 
 @dataclass
+class ThinkingContent:
+    """思考内容块（DeepSeek 等模型的 thinking 输出）"""
+    type: str = "thinking"
+    thinking: str = ""
+
+
+@dataclass
 class ToolCall:
     """工具调用"""
     id: str
@@ -41,7 +48,18 @@ class ToolResult:
     details: Any = None
 
 
-MessageContent = Union[TextContent, ToolCall, ToolResult]
+@dataclass
+class Usage:
+    """Token 使用统计"""
+    input_tokens: int = 0
+    output_tokens: int = 0
+
+    @property
+    def total_tokens(self) -> int:
+        return self.input_tokens + self.output_tokens
+
+
+MessageContent = Union[TextContent, ThinkingContent, ToolCall, ToolResult]
 
 
 @dataclass
@@ -75,11 +93,16 @@ class AgentState:
     system_prompt: str = ""
     messages: List[Message] = field(default_factory=list)
     tools: List[Tool] = field(default_factory=list)
-    model: str = "ark-code-latest"
+    model: str = "deepseek-v4-pro"
     is_streaming: bool = False
     streaming_message: Optional[Message] = None
     pending_tool_calls: List[str] = field(default_factory=list)
     error_message: Optional[str] = None
+    # 新增字段
+    session_id: str = ""
+    session_created_at: int = 0
+    usage: Usage = field(default_factory=Usage)
+    api_calls: List[Dict[str, Any]] = field(default_factory=list)
 
 
 @dataclass
@@ -88,7 +111,7 @@ class AgentConfig:
     api_key: Optional[str] = None
     base_url: Optional[str] = None
     timeout: Optional[float] = None
-    max_iterations: int = 20
+    max_iterations: Optional[int] = None
     tool_execution_mode: str = "parallel"  # "parallel" 或 "sequential"
 
 
@@ -210,3 +233,52 @@ def create_tool_execution_end_event(
         result=result,
         is_error=is_error,
     )
+
+
+# =============================================================================
+# 序列化辅助函数
+# =============================================================================
+
+def message_to_dict(message: Message) -> dict:
+    """将 Message 转换为 JSON 可序列化的 dict"""
+    content_dicts = []
+    for block in message.content:
+        if isinstance(block, ThinkingContent):
+            content_dicts.append({
+                "type": "thinking",
+                "thinking": block.thinking
+            })
+        elif isinstance(block, TextContent):
+            content_dicts.append({
+                "type": "text",
+                "text": block.text
+            })
+        elif isinstance(block, ToolCall):
+            content_dicts.append({
+                "type": "tool_use",
+                "id": block.id,
+                "name": block.name,
+                "input": block.arguments
+            })
+        elif isinstance(block, ToolResult):
+            content_dicts.append({
+                "type": "tool_result",
+                "tool_use_id": block.tool_call_id,
+                "tool_name": block.tool_name,
+                "content": [c.text for c in block.content],
+                "is_error": block.is_error
+            })
+    return {
+        "role": message.role.value,
+        "content": content_dicts,
+        "timestamp": message.timestamp
+    }
+
+
+def usage_to_dict(usage: Usage) -> dict:
+    """将 Usage 转换为 JSON 可序列化的 dict"""
+    return {
+        "input_tokens": usage.input_tokens,
+        "output_tokens": usage.output_tokens,
+        "total_tokens": usage.total_tokens
+    }

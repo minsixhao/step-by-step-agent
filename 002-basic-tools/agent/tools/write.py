@@ -10,19 +10,19 @@ def execute_write(
     on_update: Optional[Callable[[Any], None]] = None,
 ) -> ToolResult:
     """执行写入文件操作（限制在 workspace 目录下）"""
-    file_path = args.get("file_path")
+    path = args.get("path")
     content = args.get("content", "")
 
-    if not file_path:
+    if not path:
         return ToolResult(
             tool_call_id=tool_call_id,
             tool_name="write",
-            content=[TextContent(text="错误: file_path 是必填参数")],
+            content=[TextContent(text="错误: path 是必填参数")],
             is_error=True,
         )
 
     try:
-        safe_path = get_safe_path(file_path)
+        safe_path = get_safe_path(path)
 
         directory = os.path.dirname(safe_path)
         if directory and not os.path.exists(directory):
@@ -34,8 +34,8 @@ def execute_write(
         return ToolResult(
             tool_call_id=tool_call_id,
             tool_name="write",
-            content=[TextContent(text=f"成功写入文件: {file_path} (工作目录: {WORKSPACE_DIR})")],
-            details={"file_path": file_path, "safe_path": safe_path, "bytes": len(content)},
+            content=[TextContent(text=f"成功写入文件: {path} (工作目录: {WORKSPACE_DIR})")],
+            details={"path": path, "safe_path": safe_path, "bytes": len(content)},
         )
     except ValueError as e:
         return ToolResult(
@@ -58,7 +58,7 @@ write_tool = Tool(
     description=f"写入内容到文件，如果文件存在则覆盖（所有文件操作都在 {WORKSPACE_DIR} 目录下）",
     parameters=ToolParameters(
         properties={
-            "file_path": {
+            "path": {
                 "type": "string",
                 "description": "要写入的文件路径（相对于 workspace 目录）",
             },
@@ -67,7 +67,7 @@ write_tool = Tool(
                 "description": "要写入文件的内容",
             },
         },
-        required=["file_path", "content"],
+        required=["path", "content"],
     ),
     execute=execute_write,
 )

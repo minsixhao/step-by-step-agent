@@ -20,6 +20,8 @@ def execute_bash(
             is_error=True,
         )
 
+    timeout = args.get("timeout", 300)
+
     try:
         # 使用简单的 run 方式，先不做实时输出，避免跨平台问题
         result = subprocess.run(
@@ -27,7 +29,7 @@ def execute_bash(
             shell=True,
             capture_output=True,
             text=True,
-            timeout=300,
+            timeout=timeout,
             cwd=WORKSPACE_DIR,
         )
 
@@ -44,13 +46,13 @@ def execute_bash(
             tool_name="bash",
             content=[TextContent(text=combined_output)],
             is_error=result.returncode != 0,
-            details={"return_code": result.returncode, "command": command, "cwd": WORKSPACE_DIR},
+            details={"return_code": result.returncode, "command": command, "timeout": timeout, "cwd": WORKSPACE_DIR},
         )
     except subprocess.TimeoutExpired:
         return ToolResult(
             tool_call_id=tool_call_id,
             tool_name="bash",
-            content=[TextContent(text="错误: 命令在 300 秒后超时")],
+            content=[TextContent(text=f"错误: 命令在 {timeout} 秒后超时")],
             is_error=True,
         )
     except Exception as e:
@@ -70,7 +72,11 @@ bash_tool = Tool(
             "command": {
                 "type": "string",
                 "description": "要执行的 bash 命令",
-            }
+            },
+            "timeout": {
+                "type": "integer",
+                "description": "超时时间（秒），默认 300",
+            },
         },
         required=["command"],
     ),

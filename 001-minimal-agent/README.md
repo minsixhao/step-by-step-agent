@@ -46,8 +46,8 @@ cp .env.example .env
 
 ```bash
 export ANTHROPIC_AUTH_TOKEN="your-token-here"
-export ANTHROPIC_BASE_URL="https://ark.cn-beijing.volces.com/api/coding"
-export ANTHROPIC_MODEL="ark-code-latest"
+export ANTHROPIC_BASE_URL="https://api.deepseek.com/anthropic"
+export ANTHROPIC_MODEL="deepseek-v4-pro"
 ```
 
 ## 运行方式
@@ -95,6 +95,7 @@ print(response)
 │   ├── agent.py       # Agent 主类
 │   ├── loop.py        # Agent 主循环
 │   ├── types.py       # 数据类型定义
+│   ├── ui/            # 终端 UI 组件
 │   └── tools/         # 工具实现
 │       ├── __init__.py
 │       ├── read.py
@@ -106,6 +107,14 @@ print(response)
 ├── requirements.txt
 └── README.md
 ```
+
+核心文件说明：
+
+- [agent/agent.py](agent/agent.py) - Agent 用户接口
+- [agent/loop.py](agent/loop.py) - 主循环实现
+- [agent/types.py](agent/types.py) - 数据模型定义
+- [agent/tools/](agent/tools/) - 工具实现目录
+- [agent/ui/](agent/ui/) - 终端 UI 组件
 
 ## 代码规范
 

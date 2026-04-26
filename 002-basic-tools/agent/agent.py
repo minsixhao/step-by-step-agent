@@ -5,6 +5,8 @@ Agent 主类
 """
 
 import os
+import json
+import time
 from typing import List, Optional, Callable, Set
 
 from agent.types import (
@@ -16,32 +18,54 @@ from agent.types import (
     TextContent,
     AgentEvent,
     AgentEventHandler,
+    Usage,
+    message_to_dict,
+    usage_to_dict,
 )
 from agent.loop import run_agent_loop
-from agent.tools import read_tool, write_tool, edit_tool, bash_tool, WORKSPACE_DIR
+from agent.tools import read_tool, write_tool, edit_tool, bash_tool, grep_tool, find_tool, ls_tool, WORKSPACE_DIR
 
 
 def _get_default_system_prompt() -> str:
     """获取默认系统提示词"""
-    return f"""你是一个有帮助的编程助手。你可以读取、写入、编辑文件，以及执行 bash 命令。
+    return f"""你是一个专业的编程助手。通过读取文件、执行命令、编辑代码和创建新文件来帮助用户完成编程任务。
 
-重要提示：
-- 所有文件操作都在工作目录: {WORKSPACE_DIR}
-- 你不需要在路径中包含工作目录，直接使用相对路径即可
-- 所有 bash 命令也会在工作目录下执行
+可用工具：
+- read: 读取文件内容，支持 offset 和 limit 分页
+- write: 创建或覆盖文件
+- edit: 对文件进行精确修改
+- bash: 执行 bash 命令
+- grep: 在文件中搜索文本
+- find: 查找文件
+- ls: 列出目录内容
 
-工作时请遵循以下步骤：
-1. 首先读取文件以了解当前状态
-2. 使用 write 或 edit 进行修改
-3. 使用 bash 命令测试你的修改
-4. 解释你做了什么
+指南：
+- 编辑文件前先使用 read 查看文件内容
+- 使用 edit 进行精确修改（oldString 文本必须完全匹配）
+- write 仅用于新文件或完全重写
+- 总结操作时，直接输出纯文本 - 不要使用 cat 或 bash 来显示已完成的操作
+- 回复要简洁
+- 处理文件时清晰显示文件路径
 
-请始终为每个任务选择最合适的工具。"""
+工作目录：{WORKSPACE_DIR}
+- 直接使用相对路径，无需包含工作目录"""
 
 
 def _get_default_model() -> str:
     """从环境变量获取默认模型"""
-    return os.environ.get("ANTHROPIC_MODEL", "ark-code-latest")
+    return os.environ.get("ANTHROPIC_MODEL", "deepseek-v4-pro")
+
+
+def _generate_session_id() -> str:
+    """生成会话 ID：YYYYMMDD_HHMMSS_xxx 格式"""
+    now = time.time()
+    ms = int((now - int(now)) * 1000)
+    return time.strftime(f"%Y%m%d_%H%M%S_{ms:03d}")
+
+
+def _current_timestamp_ms() -> int:
+    """获取当前时间戳（毫秒）"""
+    return int(time.time() * 1000)
 
 
 class Agent:
@@ -59,7 +83,7 @@ class Agent:
         api_key: Optional[str] = None,
         base_url: Optional[str] = None,
         timeout: Optional[float] = None,
-        max_iterations: int = 20,
+        max_iterations: Optional[int] = None,
         tool_execution_mode: str = "parallel",
     ):
         """
@@ -77,7 +101,7 @@ class Agent:
         self._state = AgentState(
             system_prompt=system_prompt or _get_default_system_prompt(),
             model=model or _get_default_model(),
-            tools=[read_tool, write_tool, edit_tool, bash_tool],
+            tools=[read_tool, write_tool, edit_tool, bash_tool, grep_tool, find_tool, ls_tool],
             messages=[],
             is_streaming=False,
             streaming_message=None,
@@ -91,6 +115,11 @@ class Agent:
             max_iterations=max_iterations,
             tool_execution_mode=tool_execution_mode,
         )
+
+        # 初始化 session 信息
+        self._state.session_id = _generate_session_id()
+        self._state.session_created_at = _current_timestamp_ms()
+        self._state.usage = Usage()
 
         # 事件监听器集合
         self._event_listeners: Set[AgentEventHandler] = set()
@@ -120,6 +149,11 @@ class Agent:
         self._state.streaming_message = None
         self._state.pending_tool_calls = []
         self._state.error_message = None
+        # 重置 session 信息
+        self._state.session_id = _generate_session_id()
+        self._state.session_created_at = _current_timestamp_ms()
+        self._state.usage = Usage()
+        self._state.api_calls = []
 
     # =========================================================================
     # 事件订阅相关方法
@@ -175,12 +209,18 @@ class Agent:
         Returns:
             Agent 的文本回复
         """
-        new_messages = run_agent_loop(
-            self._state,
-            self._config,
-            message,
-            event_sink=self._emit_event,
-        )
+        try:
+            new_messages = run_agent_loop(
+                self._state,
+                self._config,
+                message,
+                event_sink=self._emit_event,
+            )
+        except Exception as e:
+            self._state.error_message = str(e)
+            self._save_session()
+            raise
+        self._save_session()
         return self._get_last_assistant_message(new_messages)
 
     def continue_(self) -> str:
@@ -197,11 +237,17 @@ class Agent:
         if last_msg.role == MessageRole.ASSISTANT:
             raise ValueError("不能从助手消息继续")
 
-        new_messages = run_agent_loop(
-            self._state,
-            self._config,
-            event_sink=self._emit_event,
-        )
+        try:
+            new_messages = run_agent_loop(
+                self._state,
+                self._config,
+                event_sink=self._emit_event,
+            )
+        except Exception as e:
+            self._state.error_message = str(e)
+            self._save_session()
+            raise
+        self._save_session()
         return self._get_last_assistant_message(new_messages)
 
     def _get_last_assistant_message(self, messages: List[Message]) -> str:
@@ -211,6 +257,49 @@ class Agent:
                 text_parts = [c.text for c in msg.content if isinstance(c, TextContent)]
                 return "\n".join(text_parts)
         return ""
+
+    def _save_session(self) -> None:
+        """保存当前会话到文件（无论成功或失败都会保存）"""
+        import os
+        from agent.tools import WORKSPACE_DIR
+
+        # 确保 sessions 目录存在
+        sessions_dir = os.path.join(WORKSPACE_DIR, "sessions")
+        os.makedirs(sessions_dir, exist_ok=True)
+
+        # 构建 session 数据
+        session_data = {
+            "session_id": self._state.session_id,
+            "created_at": self._state.session_created_at,
+            "model": self._state.model,
+            "usage": usage_to_dict(self._state.usage),
+            "messages": [message_to_dict(msg) for msg in self._state.messages],
+        }
+
+        # 如果有错误信息，记录到 session 中
+        if self._state.error_message:
+            session_data["error"] = self._state.error_message
+
+        # 写入文件
+        file_path = os.path.join(sessions_dir, f"{self._state.session_id}.json")
+        with open(file_path, "w", encoding="utf-8") as f:
+            json.dump(session_data, f, ensure_ascii=False, indent=2)
+
+        # 写入 API 调用详情文件
+        api_data = {
+            "session_id": self._state.session_id,
+            "model": self._state.model,
+            "total_usage": usage_to_dict(self._state.usage),
+            "api_calls": self._state.api_calls,
+        }
+
+        # 如果有错误，也记录到 api 文件中
+        if self._state.error_message:
+            api_data["error"] = self._state.error_message
+
+        api_file_path = os.path.join(sessions_dir, f"{self._state.session_id}_api.json")
+        with open(api_file_path, "w", encoding="utf-8") as f:
+            json.dump(api_data, f, ensure_ascii=False, indent=2)
 
     @property
     def is_streaming(self) -> bool:
